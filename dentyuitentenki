@@ -10,7 +10,7 @@ Private Const SRC_FILE_EXACT As String = "工事及び補助金改.xlsm"   ' あ
 Private Const SRC_FILE_PATTERN As String = "*工事*補助金改*.xlsm"  ' なければこれで探す
 
 '==================== 参照先（土地調書） ====================
-Private Const DST_SHEET As String = "用地明細"
+Private Const DST_SHEET As String = "電柱移転"
 Private Const TRIG_ADDRS As String = "S1,T1,U1"  ' トリガー入力セル（S→T→U）
 Private Const REG_INFO_CELL As String = "J5"  ' B5=件名/F5=住所/M5=施工業者の並びに合わせ、同じ5行目の空き領域を登記事項用に確保
 Private Const DEBUG_LOG As Boolean = False  ' ★FIX: X列 公募地目（必要時のみ True）
@@ -25,6 +25,7 @@ Private Saved_B5_Value As String
 Private Saved_F5_Value As String
 Private Saved_M5_Value As String
 Private Saved_J5_Value As String
+Private Saved_M2_Value As String
 
 '======================================================================
 ' ① 大字：B11～（B列、必要なら行挿入で延長）
@@ -406,6 +407,76 @@ CleanFail:
 End Sub
 
 '======================================================================
+' 代表者転記：M2 に参照元「表」シートの「代表者」を転記
+'======================================================================
+Private Sub 代表者転記_M2()
+
+    Dim wbSrc As Workbook, wsSrc As Worksheet
+    Dim wsDst As Worksheet
+    Dim key As String
+    Dim colTransfer As Long, colDaihyo As Long
+    Dim lastSrcRow As Long, foundRow As Long
+    Dim daihyo As String
+    Dim rngM2 As Range
+
+    On Error GoTo CleanFail
+
+    Set wsDst = ThisWorkbook.Worksheets(DST_SHEET)
+    Set rngM2 = wsDst.Range("M2")
+
+    key = GetFirstTriggerKey(wsDst)
+
+    If key = "" Then
+        ClearCellContentsMergedSafe rngM2
+        Saved_M2_Value = ""
+        GoTo CleanExit
+    End If
+
+    Set wbSrc = GetOrOpenSourceWorkbook(SRC_FILE_EXACT, SRC_FILE_PATTERN)
+    Set wsSrc = wbSrc.Worksheets(SRC_SHEET)
+
+    colTransfer = FindHeaderCol(wsSrc, "転記", HEADER_ROW)
+    If colTransfer = 0 Then Err.Raise vbObjectError + 100, , "参照元「表」シートに見出し「転記」が見つかりません。"
+
+    colDaihyo = FindHeaderCol(wsSrc, "代表者", HEADER_ROW)
+    If colDaihyo = 0 Then Err.Raise vbObjectError + 150, , "参照元「表」シートに見出し「代表者」が見つかりません。"
+
+    lastSrcRow = wsSrc.Cells(wsSrc.rows.count, colTransfer).End(xlUp).Row
+    If lastSrcRow < DATA_START_ROW Then
+        ClearCellContentsMergedSafe rngM2
+        Saved_M2_Value = ""
+        GoTo CleanExit
+    End If
+
+    foundRow = FindRowByKey(wsSrc, colTransfer, key, DATA_START_ROW, lastSrcRow)
+    If foundRow = 0 Then
+        ClearCellContentsMergedSafe rngM2
+        Saved_M2_Value = ""
+        GoTo CleanExit
+    End If
+
+    daihyo = CleanText(CStr(wsSrc.Cells(foundRow, colDaihyo).Value))
+
+    If daihyo <> "" Then
+        WriteToMergedTopLeft wsDst, "M", 2, daihyo
+        Saved_M2_Value = daihyo
+    Else
+        ClearCellContentsMergedSafe rngM2
+        Saved_M2_Value = ""
+    End If
+
+CleanExit:
+    Exit Sub
+
+CleanFail:
+    If Not rngM2 Is Nothing Then
+        ClearCellContentsMergedSafe rngM2
+    End If
+    Saved_M2_Value = ""
+    Exit Sub
+End Sub
+
+'======================================================================
 ' 登記事項転記：REG_INFO_CELL に参照元「表」シートの「登記事項」を転記
 '======================================================================
 Private Sub 登記事項転記_RegInfo()
@@ -498,7 +569,7 @@ Private Function GetLastDataRow(ByVal ws As Worksheet, ByVal colLetters As Varia
 End Function
 
 '======================================================================
-' クリア：用地明細（トリガー・単発・縦詰め出力をまとめてクリア）
+' クリア：電柱移転（トリガー・単発・縦詰め出力をまとめてクリア）
 '======================================================================
 Public Sub 用地明細_クリア()
 
@@ -526,6 +597,7 @@ Public Sub 用地明細_クリア()
     ClearCellContentsMergedSafe wsDst.Range("B5")
     ClearCellContentsMergedSafe wsDst.Range("F5")
     ClearCellContentsMergedSafe wsDst.Range("M5")
+    ClearCellContentsMergedSafe wsDst.Range("M2")
     ClearCellContentsMergedSafe wsDst.Range(REG_INFO_CELL)
 
     '--- 保存値もクリア ---
@@ -533,9 +605,10 @@ Public Sub 用地明細_クリア()
     Saved_F5_Value = ""
     Saved_M5_Value = ""
     Saved_J5_Value = ""
+    Saved_M2_Value = ""
 
     '--- 出力部の最終行を算出（行挿入に対応） ---
-    lastRow = GetLastDataRow(wsDst, Array("B", "C", "D", "F", "G", "I", "K", "M", "S", "T", "U", "V"), 11, 20)
+    lastRow = GetLastDataRow(wsDst, Array("B", "C", "D", "F", "G", "I", "K", "M", "O", "Q", "S", "T", "U", "V", "W", "X", "Y"), 11, 20)
 
     '--- 縦詰め出力をクリア ---
     ClearOutputMerged wsDst, "B", 11, lastRow
@@ -550,6 +623,11 @@ Public Sub 用地明細_クリア()
     ClearOutputMerged wsDst, "T", 11, lastRow
     ClearOutputMerged wsDst, "U", 11, lastRow
     ClearOutputMerged wsDst, "V", 11, lastRow
+    ClearOutputMerged wsDst, "W", 11, lastRow
+    ClearOutputMerged wsDst, "X", 11, lastRow
+    ClearOutputMerged wsDst, "O", 11, lastRow
+    ClearOutputMerged wsDst, "Q", 11, lastRow
+    ClearOutputMerged wsDst, "Y", 11, lastRow
 
     '--- 任意：S1 を選択 ---
     wsDst.Range("S1").Select
@@ -792,6 +870,103 @@ CleanFail:
 End Sub
 
 '======================================================================
+' O/Q/Y列をブロック同期で全体再構築方式で転記
+' O:工事内容（最終） Q:電柱番号 Y:承諾書名
+'======================================================================
+Public Sub Transfer_OQY_Vertical_Reconstruct()
+    Dim wbSrc As Workbook, wsSrc As Worksheet
+    Dim wsDst As Worksheet
+    Dim prevScreenUpdating As Boolean, prevEnableEvents As Boolean, prevCalc As XlCalculation
+    Dim colTransfer As Long, lastSrcRow As Long, foundRow As Long
+    Dim trigCells As Variant, addr As Variant, key As String
+    Dim blockStart As Long, blockEnd As Long, currentRow As Long
+    Dim outStartRow As Long, outBaseEndRow As Long
+    Dim colKouji As Long, colDenchu As Long, colShodaku As Long
+    Dim vKouji As String, vDenchu As String, vShodaku As String
+    Dim lastRowO As Long, lastRowQ As Long, lastRowY As Long, clearEnd As Long
+    Dim h As Long
+
+    outStartRow = 11
+    outBaseEndRow = 20
+
+    prevScreenUpdating = Application.ScreenUpdating
+    prevEnableEvents = Application.EnableEvents
+    prevCalc = Application.Calculation
+
+    On Error GoTo CleanFail
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    Application.Calculation = xlCalculationManual
+
+    Set wsDst = ThisWorkbook.Worksheets(DST_SHEET)
+
+    lastRowO = wsDst.Cells(wsDst.rows.count, "O").End(xlUp).Row
+    lastRowQ = wsDst.Cells(wsDst.rows.count, "Q").End(xlUp).Row
+    lastRowY = wsDst.Cells(wsDst.rows.count, "Y").End(xlUp).Row
+    clearEnd = WorksheetFunction.Max(outBaseEndRow, lastRowO, lastRowQ, lastRowY)
+    ClearOutputMerged wsDst, "O", outStartRow, clearEnd
+    ClearOutputMerged wsDst, "Q", outStartRow, clearEnd
+    ClearOutputMerged wsDst, "Y", outStartRow, clearEnd
+
+    Set wbSrc = GetOrOpenSourceWorkbook(SRC_FILE_EXACT, SRC_FILE_PATTERN)
+    Set wsSrc = wbSrc.Worksheets(SRC_SHEET)
+
+    colTransfer = FindHeaderCol(wsSrc, "転記", HEADER_ROW)
+    If colTransfer = 0 Then Err.Raise vbObjectError + 100, , "参照元「表」シートに見出し「転記」が見つかりません。"
+
+    lastSrcRow = wsSrc.Cells(wsSrc.rows.count, colTransfer).End(xlUp).Row
+    If lastSrcRow < DATA_START_ROW Then GoTo CleanExit
+
+    colKouji = FindHeaderCol(wsSrc, "工事内容（最終）", HEADER_ROW)
+    colDenchu = FindHeaderCol(wsSrc, "電柱番号", HEADER_ROW)
+    colShodaku = FindHeaderCol(wsSrc, "承諾書名", HEADER_ROW)
+
+    trigCells = Split(TRIG_ADDRS, ",")
+    For Each addr In trigCells
+        key = NormalizeKey(wsDst.Range(CStr(addr)).Value)
+        If key <> "" Then
+            foundRow = FindRowByKey(wsSrc, colTransfer, key, DATA_START_ROW, lastSrcRow)
+            If foundRow > 0 Then
+                If GetBlockRangeByKey(wsDst, key, blockStart, blockEnd) Then
+                    vKouji = ""
+                    vDenchu = ""
+                    vShodaku = ""
+
+                    If colKouji > 0 Then vKouji = CleanText(CStr(wsSrc.Cells(foundRow, colKouji).Value))
+                    If colDenchu > 0 Then vDenchu = CleanText(CStr(wsSrc.Cells(foundRow, colDenchu).Value))
+                    If colShodaku > 0 Then vShodaku = CleanText(CStr(wsSrc.Cells(foundRow, colShodaku).Value))
+
+                    If (vKouji <> "") Or (vDenchu <> "") Or (vShodaku <> "") Then
+                        currentRow = blockStart
+                        Do While currentRow < blockEnd
+                            EnsureWritableRowMulti wsDst, currentRow, outBaseEndRow, Array("O", "Q", "Y")
+                            If vKouji <> "" Then WriteToMergedTopLeft wsDst, "O", currentRow, vKouji
+                            If vDenchu <> "" Then WriteToMergedTopLeft wsDst, "Q", currentRow, vDenchu
+                            If vShodaku <> "" Then WriteToMergedTopLeft wsDst, "Y", currentRow, vShodaku
+
+                            h = GetMergedHeightMulti(wsDst, currentRow, Array("O", "Q", "Y"))
+                            currentRow = currentRow + h
+                        Loop
+                    End If
+                End If
+            End If
+        End If
+    Next addr
+
+CleanExit:
+    Application.ScreenUpdating = prevScreenUpdating
+    Application.EnableEvents = prevEnableEvents
+    Application.Calculation = prevCalc
+    Exit Sub
+
+CleanFail:
+    Application.ScreenUpdating = prevScreenUpdating
+    Application.EnableEvents = prevEnableEvents
+    Application.Calculation = prevCalc
+    MsgBox "転記中にエラー: " & Err.Description, vbExclamation
+End Sub
+
+'======================================================================
 ' ★ワンクリック：全部まとめて転記
 ' 【重要な修正】5行目の値を最後に復元
 '======================================================================
@@ -821,6 +996,7 @@ Public Sub 用地一括転記_ワンクリック()
     Call 住所転記_F5
     Call 施工業者債権者転記_M5
     Call 登記事項転記_RegInfo
+    Call 代表者転記_M2
     
     '--- 【ステップ2】縦詰め出力を実行（11行目以降） ---
     Call 大字縦詰め転記_TUV_B
@@ -828,6 +1004,7 @@ Public Sub 用地一括転記_ワンクリック()
     Call 用地項目縦詰め転記_TUV_FGIKM  ' この中でF5が保護される
     Call 元地番縦詰め転記_TUV_DE
     Call Transfer_STU_Vertical_Reconstruct
+    Call Transfer_OQY_Vertical_Reconstruct
     
     '--- 【ステップ3】5行目の値を最終復元（念のため） ---
     If Saved_B5_Value <> "" Then
@@ -841,6 +1018,9 @@ Public Sub 用地一括転記_ワンクリック()
     End If
     If Saved_J5_Value <> "" Then
         WriteToMergedTopLeft wsDst, "J", 5, Saved_J5_Value
+    End If
+    If Saved_M2_Value <> "" Then
+        WriteToMergedTopLeft wsDst, "M", 2, Saved_M2_Value
     End If
 
 CleanExit:
